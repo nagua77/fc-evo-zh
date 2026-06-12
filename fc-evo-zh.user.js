@@ -2,7 +2,7 @@
 // @name         FC26 进化中文名（fut.gg）
 // @name:en      FC26 Evolution Chinese Names for fut.gg
 // @namespace    https://github.com/nagua77/fc-evo-zh
-// @version      0.1.0
+// @version      0.1.1
 // @description  在 fut.gg 显示 EA 官方简体中文进化名称（进化列表 / 详情 / Evo Lab）
 // @description:en  Show EA's official Simplified Chinese Evolution names on fut.gg
 // @author       nagua77
@@ -77,7 +77,9 @@
     if (!force && cached && Date.now() - (cached.fetchedAt || 0) < TTL_MS) return;
     for (const url of DATA_URLS) {
       try {
-        const text = await gmFetch(url);
+        // 加时间戳绕过浏览器缓存：jsDelivr 给数据设了 7 天 max-age，
+        // 否则「强制更新」也会命中本地旧缓存，数据最多滞后 7 天才更新。
+        const text = await gmFetch(url + "?t=" + Date.now());
         const data = JSON.parse(text);
         if (!data || typeof data.byId !== 'object') throw new Error('结构异常');
         GM_setValue(CACHE_KEY, { data, fetchedAt: Date.now() });
