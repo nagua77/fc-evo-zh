@@ -2,7 +2,7 @@
 // @name         FC26 进化中文名（fut.gg）
 // @name:en      FC26 Evolution Chinese Names for fut.gg
 // @namespace    https://github.com/nagua77/fc-evo-zh
-// @version      0.1.2
+// @version      0.1.3
 // @description  在 fut.gg 显示 EA 官方简体中文进化名称（进化列表 / 详情 / Evo Lab）
 // @description:en  Show EA's official Simplified Chinese Evolution names on fut.gg
 // @author       nagua77
