@@ -2,7 +2,7 @@
 // @name         FC26 进化中文名（fut.gg）
 // @name:en      FC26 Evolution Chinese Names for fut.gg
 // @namespace    https://github.com/nagua77/fc-evo-zh
-// @version      0.1.1
+// @version      0.1.2
 // @description  在 fut.gg 显示 EA 官方简体中文进化名称（进化列表 / 详情 / Evo Lab）
 // @description:en  Show EA's official Simplified Chinese Evolution names on fut.gg
 // @author       nagua77
@@ -30,9 +30,11 @@
     'https://fastly.jsdelivr.net/gh/nagua77/fc-evo-zh@main/data/evo-names.zh.json',
     'https://raw.githubusercontent.com/nagua77/fc-evo-zh/main/data/evo-names.zh.json',
   ];
+  const META_URLS = DATA_URLS.map(u => u.replace('evo-names.zh.json', 'meta.json'));
   const CACHE_KEY = 'evoDataCache';
+  const META_KEY = 'evoMetaCache';
   const ENABLED_KEY = 'enabled';
-  const TTL_MS = 8 * 60 * 60 * 1000; // 8h，stale-while-revalidate
+  const META_CHECK_TTL_MS = 5 * 60 * 1000; // 5min：版本探针最小间隔，避免同一页内重复触发
   const FETCH_TIMEOUT_MS = 10 * 1000;
 
   const log = (...a) => console.debug('[fc-evo-zh]', ...a);
@@ -73,25 +75,54 @@
   }
 
   async function refreshData(force) {
-    const cached = GM_getValue(CACHE_KEY, null);
-    if (!force && cached && Date.now() - (cached.fetchedAt || 0) < TTL_MS) return;
-    for (const url of DATA_URLS) {
+    const now = Date.now();
+
+    // 探针冷却：5 分钟内不重复检查（避免 SPA 页内多次触发）
+    const metaCache = GM_getValue(META_KEY, null);
+    if (!force && metaCache && now - (metaCache.checkedAt || 0) < META_CHECK_TTL_MS) return;
+
+    // 第一步：拉 meta.json（几十字节），比对版本
+    // ?t=时间戳 绕过 jsDelivr 7 天浏览器缓存
+    let serverUpdatedAt = null;
+    for (const url of META_URLS) {
       try {
-        // 加时间戳绕过浏览器缓存：jsDelivr 给数据设了 7 天 max-age，
-        // 否则「强制更新」也会命中本地旧缓存，数据最多滞后 7 天才更新。
-        const text = await gmFetch(url + "?t=" + Date.now());
-        const data = JSON.parse(text);
-        if (!data || typeof data.byId !== 'object') throw new Error('结构异常');
-        GM_setValue(CACHE_KEY, { data, fetchedAt: Date.now() });
-        buildMaps(data);
-        processRoot(document.body);
-        log(`已从 ${new URL(url).host} 更新译名数据`);
-        return;
+        const text = await gmFetch(url + '?t=' + now);
+        const meta = JSON.parse(text);
+        if (meta && meta.updatedAt) {
+          serverUpdatedAt = meta.updatedAt;
+          GM_setValue(META_KEY, { updatedAt: serverUpdatedAt, checkedAt: now });
+          break;
+        }
       } catch (e) {
-        log(`拉取失败 ${url}: ${e.message}`);
+        log(`meta 拉取失败 ${url}: ${e.message}`);
       }
     }
-    log('所有数据源均失败，沿用本地缓存');
+
+    if (!serverUpdatedAt) {
+      log('meta 全源失败，沿用本地缓存');
+      return;
+    }
+
+    // 第二步：版本未变 → 跳过全量拉取
+    const dataCache = GM_getValue(CACHE_KEY, null);
+    if (!force && dataCache && dataCache.data && dataCache.data.updatedAt === serverUpdatedAt) return;
+
+    // 第三步：版本变了 → 拉完整数据
+    for (const url of DATA_URLS) {
+      try {
+        const text = await gmFetch(url + '?t=' + now);
+        const data = JSON.parse(text);
+        if (!data || typeof data.byId !== 'object') throw new Error('结构异常');
+        GM_setValue(CACHE_KEY, { data, fetchedAt: now });
+        buildMaps(data);
+        processRoot(document.body);
+        log(`已从 ${new URL(url).host} 更新译名数据（${serverUpdatedAt}）`);
+        return;
+      } catch (e) {
+        log(`数据拉取失败 ${url}: ${e.message}`);
+      }
+    }
+    log('数据全源失败，沿用本地缓存');
   }
 
   // ------------------------------------------------------------ DOM 替换
