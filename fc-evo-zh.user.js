@@ -34,8 +34,10 @@
   const CACHE_KEY = 'evoDataCache';
   const META_KEY = 'evoMetaCache';
   const ENABLED_KEY = 'enabled';
+  const DISMISSED_KEY = 'updateDismissed';
   const META_CHECK_TTL_MS = 5 * 60 * 1000; // 5min：版本探针最小间隔，避免同一页内重复触发
   const FETCH_TIMEOUT_MS = 10 * 1000;
+  const DOWNLOAD_URL = 'https://cdn.jsdelivr.net/gh/nagua77/fc-evo-zh@main/fc-evo-zh.user.js';
 
   const log = (...a) => console.debug('[fc-evo-zh]', ...a);
 
@@ -57,6 +59,32 @@
     byId = new Map(Object.entries(data.byId || {}));
     byName = new Map(Object.entries(data.byName || {}));
     log(`数据就绪：byId=${byId.size} byName=${byName.size} updatedAt=${data.updatedAt}`);
+  }
+
+  // ------------------------------------------------------------ 更新提示横幅
+
+  function showUpdateBanner(newVersion) {
+    if (GM_getValue(DISMISSED_KEY, '') === newVersion) return;
+    if (document.getElementById('evo-zh-banner')) return;
+    const bar = document.createElement('div');
+    bar.id = 'evo-zh-banner';
+    bar.style.cssText = [
+      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:2147483647',
+      'background:#0070f3', 'color:#fff', 'font:14px/1 sans-serif',
+      'padding:10px 16px', 'display:flex', 'align-items:center',
+      'justify-content:center', 'gap:16px', 'box-shadow:0 2px 8px rgba(0,0,0,.25)',
+    ].join(';');
+    const msg = document.createElement('span');
+    msg.textContent = `FC26 进化中文名 v${newVersion} 已就绪，点此一键更新 →`;
+    msg.style.cssText = 'cursor:pointer;text-decoration:underline;';
+    msg.onclick = () => window.open(DOWNLOAD_URL, '_blank');
+    const close = document.createElement('span');
+    close.textContent = '✕';
+    close.title = '本版本不再提示';
+    close.style.cssText = 'cursor:pointer;font-size:16px;opacity:.75;padding:0 4px;';
+    close.onclick = () => { GM_setValue(DISMISSED_KEY, newVersion); bar.remove(); };
+    bar.append(msg, close);
+    document.body.prepend(bar);
   }
 
   // ------------------------------------------------------------ 数据加载
@@ -91,6 +119,9 @@
         if (meta && meta.updatedAt) {
           serverUpdatedAt = meta.updatedAt;
           GM_setValue(META_KEY, { updatedAt: serverUpdatedAt, checkedAt: now });
+          if (meta.scriptVersion && meta.scriptVersion !== GM_info.script.version) {
+            showUpdateBanner(meta.scriptVersion);
+          }
           break;
         }
       } catch (e) {
